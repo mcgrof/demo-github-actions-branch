@@ -1,0 +1,46 @@
+name: Artifact demo
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create some files
+        run: |
+          mkdir -p files
+          echo "This is file 1" > files/file1.txt
+          echo "This is file 2" > files/file2.txt
+          echo "This is file 3" > files/file3.log
+          echo "This is file 4" > files/file4.log
+
+      - name: Create another directory with empty files
+        run: |
+          mkdir -p empty_files
+          touch empty_files/empty1.txt
+          touch empty_files/empty2.txt
+
+      - name: Create results.txt with a list of file globs and directories
+        run: |
+          echo "files/*.txt" > results.txt
+          echo "files/*.log" >> results.txt
+          echo "empty_files" >> results.txt
+          cat results.txt
+
+      - name: Read results.txt and set environment variable
+        run: |
+          FILE_PATHS=$(cat results.txt | tr '\n' '\n')
+          echo "FILE_PATHS<<EOF" >> $GITHUB_ENV
+          echo "$FILE_PATHS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Upload files listed in results.txt as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: files-from-results
+          path: ${{ env.FILE_PATHS }}

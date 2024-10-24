@@ -1,0 +1,18 @@
+name: Simple nohup demo
+
+on:
+  push:
+
+jobs:
+  test-nohup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run nohup with unbuffered output
+        run: |
+          nohup stdbuf -oL bash -c 'for i in $(seq 1 30); do echo "Tick $i"; sleep 1; done' > /tmp/test.log 2>&1 &
+          echo $! > /tmp/test.pid
+          while kill -0 $(cat /tmp/test.pid) 2> /dev/null; do
+            echo "Waiting for nohup session to finish..."
+            sleep 5
+          done
+          cat /tmp/test.log
