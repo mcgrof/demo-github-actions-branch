@@ -1,0 +1,124 @@
+name: Options demo
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      defconfig:
+        description: "Select defconfig"
+        required: false
+        default: "ci-default"
+        type: choice
+        options:
+          - "ci-default"
+          - "xfs_reflink_4k"
+          - "xfs_nocrc_4k"
+      soak:
+        description: "Select soak duration"
+        required: false
+        default: "No soak"
+        type: choice
+        options:
+          - "No soak"
+          - "Low - 5 seconds"
+          - "Mid - 10 seconds"
+          - "High - 15 seconds"
+          - "Pathological - 1 minute"
+      tests:
+        description: "Select additional test coverage"
+        required: false
+        default: "ci-default-test"
+        type: choice
+        options:
+          - "ci-default-test"
+          - "generic/003"
+          - "generic/751"
+          - "custom"
+      custom_tests:
+        description: "Enter custom test(s) (space or comma-separated: 'test1 test2' or 'test1,test2')"
+        required: false
+        type: string
+        default: ""
+      timeout_minutes:
+        description: "Timeout in minutes"
+        required: true
+        default: 6
+        type: choice
+        options:
+          - 6
+          - 12
+          - 18
+
+jobs:
+  test-options:
+    name: Test options menu
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJson(github.event.inputs.timeout_minutes || '6') }}
+    steps:
+      - name: Process test selection
+        id: process-tests
+        run: |
+          if [ "${{ github.event.inputs.tests }}" == "custom" ]; then
+            if [ -n "${{ github.event.inputs.custom_tests }}" ]; then
+              # Replace commas with spaces and collapse multiple spaces into single spaces
+              TESTS=$(echo "${{ github.event.inputs.custom_tests }}" | tr ',' ' ' | tr -s ' ')
+              # Trim leading and trailing whitespace
+              TESTS=$(echo "$TESTS" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+              echo "SELECTED_TESTS=$TESTS" >> $GITHUB_ENV
+              echo "Custom tests selected: $TESTS"
+            else
+              echo "No custom tests provided, falling back to default"
+              echo "SELECTED_TESTS=ci-default-test" >> $GITHUB_ENV
+            fi
+          else
+            echo "SELECTED_TESTS=${{ github.event.inputs.tests }}" >> $GITHUB_ENV
+            echo "Predefined test selected: ${{ github.event.inputs.tests }}"
+          fi
+      - name: use all options
+        run: |
+          echo "Timeout: ${{ fromJson(github.event.inputs.timeout_minutes || '6') }} minutes"
+          soak=1
+          if [ "${{ github.event.inputs.soak}}" == "No soak" ]; then
+            soak=1
+          elif [ "${{ github.event.inputs.soak}}" == "Low - 5 seconds" ]; then
+            soak=5
+          elif [ "${{ github.event.inputs.soak}}" == "Mid - 10 seconds" ]; then
+            soak=10
+          elif [ "${{ github.event.inputs.soak}}" == "High - 15 minutes" ]; then
+            soak=15
+          elif [ "${{ github.event.inputs.soak}}" == "Pathological - 1 minute" ]; then
+            soak=60
+          else
+            soak=1
+          fi
+
+          nohup stdbuf -oL bash -c 'for i in $(seq 1 $soak); do echo "$i: soak: ${{ github.event.inputs.defconfig }} ${{ github.event.inputs.soak }} ${{ github.event.inputs.tests }}"; sleep 1; done' > /tmp/test.log 2>&1 &
+          echo $! > /tmp/test.pid
+          while kill -0 $(cat /tmp/test.pid) 2> /dev/null; do
+            echo "Waiting for nohup session to finish..."
+            sleep 5
+          done
+
+      - name: Write option logs
+        run: |
+          if [ "${{ github.event.inputs.defconfig }}" == "ci-default" ]; then
+            echo "${{ github.event.inputs.defconfig }} was used" > /tmp/ci-default.txt
+          elif [ "${{ github.event.inputs.defconfig }}" == "xfs_reflink_4k" ]; then
+            echo "${{ github.event.inputs.defconfig }} was used" > /tmp/xfs_reflink_4k.txt
+          elif [ "${{ github.event.inputs.defconfig }}" == "xfs_nocrc_4k" ]; then
+            echo "${{ github.event.inputs.defconfig }} was used" > /tmp/xfs_nocrc_4k.txt
+          else
+            echo "No option was used for defconfig" > /tmp/empty.txt
+          fi
+
+      - name: Upload option logs as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: task-log
+          path: |
+            /tmp/test.log
+            /tmp/ci-default.txt
+            /tmp/xfs_reflink_4k.txt
+            /tmp/xfs_nocrc_4k.txt
+            /tmp/empty.txt
